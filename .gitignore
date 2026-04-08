@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.egg
+
+# Secrets — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+*secret*
+*credential*
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# Scan reports (generated, not source)
+reports/*.json
+reports/*.html
+reports/*.sarif
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Podman/Docker
+*.tar
