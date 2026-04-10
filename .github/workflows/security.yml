@@ -7,8 +7,8 @@ on:
     branches: [ main, develop ]
 
 permissions:
-  contents: read        # Least privilege — only read the repo
-  security-events: write # Required to upload SARIF to GitHub Security tab
+  contents: read
+  security-events: write  # Required for both Gitleaks SARIF and CodeQL uploads
 
 jobs:
   secrets-scan:
@@ -19,27 +19,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history — scan every commit, not just HEAD
+          fetch-depth: 0
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Only needed for org repos; fine to omit for public/personal
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Upload Gitleaks SARIF report
-        if: always()   # Upload even on failure so you can review findings
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
           path: results.sarif
           if-no-files-found: ignore
-          retention-days: 90  # DoD evidence retention — keep artifacts
+          retention-days: 90
 
   dependency-audit:
     name: Dependency Vulnerability Audit (pip-audit)
     runs-on: ubuntu-latest
-    needs: secrets-scan   # Don't audit deps if secrets check fails
+    needs: secrets-scan
 
     steps:
       - name: Checkout repository
@@ -53,22 +53,12 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Create baseline requirements (Day 1 scaffold)
-        run: |
-          # We'll replace this with a real requirements.txt as we build
-          cat > requirements.txt << 'REQS'
-          fastapi==0.111.0
-          anthropic==0.28.0
-          langchain==0.2.0
-          uvicorn==0.30.0
-          REQS
-
       - name: Run pip-audit
         run: |
           pip-audit -r requirements.txt \
             --format json \
             --output reports/pip-audit-report.json \
-            || true   # Don't fail pipeline on Day 1 — we'll tighten this later
+            || true
 
       - name: Upload audit report
         if: always()
@@ -76,5 +66,52 @@ jobs:
         with:
           name: dependency-audit-report
           path: reports/pip-audit-report.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  codeql-sast:
+    name: SAST — CodeQL Python Analysis
+    runs-on: ubuntu-latest
+    needs: secrets-scan   # Gate: don't run SAST if secrets are present
+
+    permissions:
+      contents: read
+      security-events: write  # Scoped here too for clarity — CodeQL uploads SARIF
+
+    strategy:
+      fail-fast: false        # If you add more languages later, don't cancel all on one failure
+      matrix:
+        language: [ python ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # queries: security-extended  # Uncomment Phase 4 when you want deeper coverage
+          #                             # Default = security-and-quality, good for now
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        # For Python, autobuild just indexes the source — no compile step needed.
+        # For compiled languages (Java, Go) this actually builds the binary.
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          # SARIF output goes to GitHub Security tab automatically.
+          # Also retain as artifact for ATO evidence (90-day DoD pattern).
+          upload: true
+
+      - name: Upload CodeQL SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-python-sarif
+          path: /home/runner/work/_temp/codeql_databases
           if-no-files-found: ignore
           retention-days: 90
