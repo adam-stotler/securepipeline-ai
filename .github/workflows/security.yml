@@ -8,7 +8,7 @@ on:
 
 permissions:
   contents: read
-  security-events: write  # Required for both Gitleaks SARIF and CodeQL uploads
+  security-events: write  # CodeQL uploads SARIF to Security tab; Gitleaks saves artifact only
 
 jobs:
   secrets-scan:
