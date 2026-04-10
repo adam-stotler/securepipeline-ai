@@ -103,8 +103,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-          # SARIF output goes to GitHub Security tab automatically.
-          # Also retain as artifact for ATO evidence (90-day DoD pattern).
+          output: ${{ runner.temp }}/codeql-sarif
           upload: true
 
       - name: Upload CodeQL SARIF as artifact
@@ -112,6 +111,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codeql-python-sarif
-          path: /home/runner/work/_temp/codeql_databases
+          path: ${{ runner.temp }}/codeql-sarif
           if-no-files-found: ignore
           retention-days: 90
