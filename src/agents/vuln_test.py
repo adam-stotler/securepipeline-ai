@@ -1,31 +1,34 @@
 """
-CodeQL verification target — intentional CWE-78 (Command Injection).
-DELETE THIS FILE before any production milestone.
-This exists solely to verify the SAST gate catches shell injection.
+CodeQL verification target — FastAPI entry points create real dataflow sources.
+DELETE before any production milestone.
 """
 import subprocess
 import os
+from fastapi import FastAPI
 
-def scan_target(target_host: str) -> str:
+app = FastAPI()
+
+
+@app.get("/scan")
+def scan_target(host: str) -> dict:
     """
-    INTENTIONALLY VULNERABLE: user input flows directly into shell command.
-    CodeQL should flag this as a command injection (CWE-78).
+    CWE-78: HTTP query param flows directly into shell command.
+    CodeQL can now trace: HTTP input → subprocess.run(shell=True)
     """
-    # BAD: shell=True + unsanitized input = injection sink
     result = subprocess.run(
-        f"ping -c 1 {target_host}",
+        f"ping -c 1 {host}",
         shell=True,
         capture_output=True,
         text=True
     )
-    return result.stdout
+    return {"output": result.stdout}
 
 
-def read_report(report_name: str) -> str:
+@app.get("/report")
+def read_report(filename: str) -> dict:
     """
-    INTENTIONALLY VULNERABLE: path traversal (CWE-22).
-    CodeQL should flag user-controlled input reaching open().
+    CWE-22: HTTP query param flows into open() without sanitization.
+    CodeQL can now trace: HTTP input → open(path)
     """
-    # BAD: no path sanitization — attacker passes "../../etc/passwd"
-    with open(os.path.join("reports", report_name), "r") as f:
-        return f.read()
+    with open(os.path.join("reports", filename), "r") as f:
+        return {"content": f.read()}

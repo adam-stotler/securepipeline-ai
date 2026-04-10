@@ -27,9 +27,8 @@ secrets/
 .terraform.lock.hcl
 
 # Scan reports (generated, not source)
-reports/*.json
-reports/*.html
-reports/*.sarif
+reports/*
+reports/*/*
 
 # IDE
 .vscode/
