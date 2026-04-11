@@ -41,3 +41,5 @@ Thumbs.db
 
 # Podman/Docker
 *.tar
+CLAUDE.md
+.mcp.json
