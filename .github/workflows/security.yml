@@ -115,7 +115,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-semgrep:
+  semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
     permissions:
@@ -138,7 +138,7 @@ semgrep:
             --severity ERROR \
             --severity WARNING \
             .
-            
+
       - name: Upload Semgrep SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
