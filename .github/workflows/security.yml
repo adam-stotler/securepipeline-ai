@@ -29,9 +29,8 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ARTIFACT_NAME: gitleaks-results-head
         with:
-          config-path: .gitleaks.toml   # use our custom config
+          config-path: .gitleaks.toml
           args: >
             detect
             --source=.
@@ -41,19 +40,13 @@ jobs:
             --exit-code=1
 
       - name: Run Gitleaks — git history scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ARTIFACT_NAME: gitleaks-results-head
-        with:
-          config-path: .gitleaks.toml
-          args: >
-            detect
-            --source=.
-            --config=.gitleaks.toml
-            --log-opts="--all --full-history"
-            --redact
-            --verbose
+        run: |
+          gitleaks detect \
+            --source=. \
+            --config=.gitleaks.toml \
+            --log-opts="--all --full-history" \
+            --redact \
+            --verbose \
             --exit-code=1
 
   dependency-audit:
