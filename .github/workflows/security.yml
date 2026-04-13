@@ -12,29 +12,47 @@ permissions:
 
 jobs:
   secrets-scan:
-    name: Secrets Detection (Gitleaks)
+    name: Secrets Scan (Gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # needed if you add SARIF upload later
 
     steps:
-      - name: Checkout repository
+      - name: Checkout — full history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0        # CRITICAL: 0 = full history, not just HEAD
+                                # Without this, secrets in old commits are invisible
 
-      - name: Run Gitleaks
+      - name: Run Gitleaks — current commit
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-      - name: Upload Gitleaks SARIF report
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: gitleaks-report
-          path: results.sarif
-          if-no-files-found: ignore
-          retention-days: 90
+          config-path: .gitleaks.toml   # use our custom config
+          args: >
+            detect
+            --source=.
+            --config=.gitleaks.toml
+            --redact
+            --verbose
+            --exit-code=1
+
+      - name: Run Gitleaks — git history scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config-path: .gitleaks.toml
+          args: >
+            detect
+            --source=.
+            --config=.gitleaks.toml
+            --log-opts="--all --full-history"
+            --redact
+            --verbose
+            --exit-code=1
 
   dependency-audit:
     name: Dependency Vulnerability Audit (pip-audit)

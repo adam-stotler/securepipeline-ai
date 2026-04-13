@@ -1,0 +1,91 @@
+# .gitleaks.toml
+# SecurePipeline.ai — Gitleaks custom configuration
+# Maps to: IA-5 (Authenticator Management), SI-12 (Information Management & Retention)
+# Maintained as ATO evidence artifact — do not delete without ISSO coordination
+
+title = "SecurePipeline.ai Gitleaks Config"
+
+[extend]
+# Inherit all default Gitleaks rules — we add on top, not replace
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# CUSTOM RULES — DoD/Federal patterns not covered by default ruleset
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id          = "dod-jwt-il-token"
+description = "Potential IL4/IL5 environment JWT or bearer token"
+regex       = '''(?i)(authorization|bearer|x-api-key|token)[=:\s\"\']+[A-Za-z0-9\-_]{20,}'''
+tags        = ["jwt", "dod", "IA-5"]
+severity    = "critical"
+
+  [rules.allowlist]
+  # Exclude test fixture files and mock token values
+  regexes   = ['''(?i)(fake|mock|test|example|placeholder|dummy)''']
+  paths     = ['''tests/.*''', '''docs/.*''']
+
+[[rules]]
+id          = "anthropic-api-key"
+description = "Anthropic API key — sk-ant prefix pattern"
+regex       = '''sk-ant-[A-Za-z0-9\-_]{20,}'''
+tags        = ["api-key", "anthropic", "IA-5"]
+severity    = "critical"
+
+[[rules]]
+id          = "disa-stig-credential"
+description = "Potential hardcoded credential near STIG/DISA references"
+regex       = '''(?i)(stig|disa|acas|tenableio)[^\n]{0,30}(password|passwd|secret|key)\s*[=:]\s*[^\s]{6,}'''
+tags        = ["stig", "dod", "IA-5"]
+severity    = "high"
+
+[[rules]]
+id          = "aws-govcloud-key"
+description = "AWS GovCloud access key — standard AKIA prefix applies to GovCloud too"
+regex       = '''AKIA[0-9A-Z]{16}'''
+tags        = ["aws", "govcloud", "IA-5"]
+severity    = "critical"
+
+[[rules]]
+id          = "private-key-header"
+description = "PEM private key block — catches RSA, EC, and generic private keys"
+regex       = '''-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----'''
+tags        = ["private-key", "IA-5"]
+severity    = "critical"
+
+[[rules]]
+id          = "env-file-secret"
+description = "Secrets pattern in .env file format — KEY=value with high-entropy value"
+regex       = '''(?i)^(SECRET|PASSWORD|PASSWD|API_KEY|TOKEN|AUTH|CREDENTIAL)[_A-Z]*\s*=\s*[^\s]{8,}'''
+tags        = ["env", "IA-5"]
+severity    = "high"
+
+# ---------------------------------------------------------------------------
+# GLOBAL ALLOWLIST — patterns safe to suppress across all rules
+# ---------------------------------------------------------------------------
+
+[allowlist]
+description = "Global allowlist — reviewed and approved patterns"
+
+# Suppress known-safe placeholder strings
+regexes = [
+  '''(?i)(your[_-]?key|your[_-]?secret|changeme|replace[_-]?me|insert[_-]?here)''',
+  '''(?i)(example\.com|test\.local|localhost)''',
+  # GitHub Actions expression syntax — not secrets
+  '''\$\{\{[^}]+\}\}''',
+  # Base64 encoded public certs (long but not sensitive)
+  '''MII[A-Za-z0-9+/]{50,}''',
+]
+
+# Suppress known non-secret file types
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''CHANGELOG\.md$''',
+  '''LICENSE$''',
+  '''\.github/workflows/.*\.yml$''',   # workflow files use ${{ secrets.X }} — not real values
+  '''tests/fixtures/.*''',
+  '''docs/.*\.md$''',
+]
+
+# Suppress specific commits (use sparingly — document the reason)
+# commits = ["abc1234"]
