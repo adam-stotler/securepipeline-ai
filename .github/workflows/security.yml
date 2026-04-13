@@ -114,3 +114,34 @@ jobs:
           path: ${{ runner.temp }}/codeql-sarif
           if-no-files-found: ignore
           retention-days: 90
+
+semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep \
+            --config p/python \
+            --config p/owasp-top-ten \
+            --sarif \
+            --output semgrep.sarif \
+            --severity ERROR \
+            --severity WARNING \
+            .
+            
+      - name: Upload Semgrep SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
