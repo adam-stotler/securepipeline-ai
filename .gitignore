@@ -43,3 +43,4 @@ Thumbs.db
 *.tar
 CLAUDE.md
 .mcp.json
+.venv/
