@@ -1,4 +1,5 @@
-# SecurePipeline.ai
+
+SecurePipeline.ai
 
 > **DoD-grade CI/CD security automation with AI-powered NIST 800-53 triage and ATO evidence generation.**
 
@@ -17,36 +18,30 @@ A security automation pipeline purpose-built for DoD/federal environments. It en
 | ✅ Day 3 | Semgrep integrated with `p/python` + `p/owasp-top-ten`, SARIF visible in Security tab alongside CodeQL, four-job pipeline green — maps to SA-11(1) + SA-11(4) |
 | ✅ Day 4 | Gitleaks hardened with custom `.gitleaks.toml`, DoD-specific rules (Anthropic key, DISA/STIG, GovCloud), allowlisting for GH Actions expressions, full git history scan via `fetch-depth: 0` + direct CLI call, five-job pipeline green — maps to IA-5 + SI-12 |
 | ✅ Day 5 | pip-audit hardened to hard-fail gate, 11 vulnerabilities remediated via dependency upgrades, clean venv-scoped `requirements.txt` + `requirements.in` committed, CycloneDX SBOM artifact generated each run — maps to SA-12 + SA-15 |
-| 🔄 Day 6 | In progress |
+| ✅ Day 6 | Trivy filesystem + secrets scan added as 6th gate (CRITICAL/HIGH hard-fail, dual SARIF to Security tab), workflow permissions hardened to job-level least privilege — maps to RA-5 + SI-3 + AC-6 |
 
 ---
 
 ## Project Roadmap
-
-```
 Phase 1 — GitHub Actions CI/CD          ← CURRENT (Days 1–14)
 Phase 2 — Container Security             (Podman + Trivy/Grype)
 Phase 3 — IaC Security                   (Terraform + tfsec/Checkov)
 Phase 4 — AI Layer                        (LLM triage + NIST mapping + ATO artifacts)
-```
 
 ---
 
 ## Security Pipeline Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    security.yml                         │
-│              GitHub Actions Workflow                    │
-├──────────┬──────────┬──────────┬──────────┬────────────┤
-│ Gitleaks │  CodeQL  │ Semgrep  │pip-audit │  (next)    │
-│ Secrets  │  SAST    │  SAST    │   SCA    │  Trivy     │
-│ Scanning │          │          │  + SBOM  │  Container │
-├──────────┴──────────┴──────────┴──────────┴────────────┤
-│              SARIF → GitHub Security Tab                │
-│         CycloneDX SBOM → Actions Artifacts              │
-└─────────────────────────────────────────────────────────┘
-```
+┌──────────────────────────────────────────────────────────────────┐
+│                         security.yml                             │
+│                   GitHub Actions Workflow                        │
+├──────────┬──────────┬──────────┬──────────┬──────────────────────┤
+│ Gitleaks │  CodeQL  │ Semgrep  │pip-audit │  Trivy               │
+│ Secrets  │  SAST    │  SAST    │   SCA    │  Filesystem +        │
+│ Scanning │          │          │  + SBOM  │  Secrets Scan        │
+├──────────┴──────────┴──────────┴──────────┴──────────────────────┤
+│                  SARIF → GitHub Security Tab                      │
+│             CycloneDX SBOM → Actions Artifacts                    │
+└──────────────────────────────────────────────────────────────────┘
 
 ---
 
@@ -60,6 +55,9 @@ Phase 4 — AI Layer                        (LLM triage + NIST mapping + ATO art
 | SI-12 | Information Management and Retention (secret history) | Gitleaks full-history scan |
 | SA-12 | Supply Chain Protection | pip-audit hard-fail gate |
 | SA-15 | Development Process, Standards, and Tools — SBOM | CycloneDX via pip-audit |
+| RA-5 | Vulnerability Monitoring and Scanning | Trivy filesystem scan |
+| SI-3 | Malicious Code Protection | Trivy secrets scan |
+| AC-6 | Least Privilege | Job-scoped workflow permissions |
 
 ---
 
@@ -76,14 +74,13 @@ Phase 4 — AI Layer                        (LLM triage + NIST mapping + ATO art
 | SAST | CodeQL, Semgrep (`p/python`, `p/owasp-top-ten`) |
 | Secrets Scanning | Gitleaks + custom DoD ruleset |
 | Dependency Audit | pip-audit + CycloneDX SBOM |
+| Filesystem Scanning | Trivy (vuln + secrets, filesystem mode) |
 | Container Scanning | Trivy / Grype *(Phase 2)* |
 | IaC Scanning | tfsec / Checkov *(Phase 3)* |
 
 ---
 
 ## Repo Structure
-
-```
 securepipeline-ai/
 ├── .github/
 │   └── workflows/
@@ -94,7 +91,6 @@ securepipeline-ai/
 ├── requirements.in               # Direct dependencies (pip-tools source)
 ├── requirements.txt              # Pinned, audited dependencies
 └── README.md
-```
 
 ---
 
@@ -105,6 +101,7 @@ securepipeline-ai/
 - Custom `.gitleaks.toml` with DoD-specific rules: Anthropic API keys, DISA/STIG tokens, GovCloud identifiers
 - GitHub Actions expression allowlist to eliminate false positives
 - Hard-fail on any detection
+- Maps to IA-5 + SI-12
 
 ### SAST — CodeQL
 - GitHub-native static analysis for Python
@@ -121,6 +118,20 @@ securepipeline-ai/
 - CycloneDX SBOM generated as a signed Actions artifact each run
 - Scoped to venv — no system package noise
 - Maps to SA-12 + SA-15
+
+### Filesystem Scanning — Trivy
+- Dual-mode scan: vulnerability detection + secrets detection
+- Hard-fail on CRITICAL or HIGH severity findings
+- `ignore-unfixed: true` — unfixed vulnerabilities tracked via POA&M, not used to block pipeline with no remediation path
+- Dual SARIF upload: `trivy-filesystem` and `trivy-secrets` categories visible in Security tab
+- Runs only after `secrets-scan` and `pip-audit` pass — gated execution
+- Maps to RA-5 + SI-3
+
+### Workflow Permissions — Least Privilege
+- `security-events: write` scoped only to jobs that upload SARIF (CodeQL, Semgrep, Trivy)
+- `secrets-scan` and `pip-audit` run with `contents: read` only
+- Eliminates overbroad `GITHUB_TOKEN` grants — common CI/CD audit finding
+- Maps to AC-6
 
 ---
 
@@ -146,7 +157,7 @@ cd securepipeline-ai
 python3 -m venv .venv
 source .venv/bin/activate
 pip install pip-tools
-pip-sync requirements.txt
+.venv/bin/pip-sync requirements.txt
 
 # Run the FastAPI app locally
 uvicorn app.main:app --reload
