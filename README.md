@@ -31,18 +31,17 @@ Phase 4 — AI Layer                        (LLM triage + NIST mapping + ATO art
 ---
 
 ## Security Pipeline Architecture
-┌──────────────────────────────────────────────────────────────────┐
-│                         security.yml                             │
-│                   GitHub Actions Workflow                        │
-├──────────┬──────────┬──────────┬──────────┬──────────────────────┤
-│ Gitleaks │  CodeQL  │ Semgrep  │pip-audit │  Trivy               │
-│ Secrets  │  SAST    │  SAST    │   SCA    │  Filesystem +        │
-│ Scanning │          │          │  + SBOM  │  Secrets Scan        │
-├──────────┴──────────┴──────────┴──────────┴──────────────────────┤
-│                  SARIF → GitHub Security Tab                      │
-│             CycloneDX SBOM → Actions Artifacts                    │
-└──────────────────────────────────────────────────────────────────┘
-
+┌─────────────────────────────────────────────────────────────┐
+│                      security.yml                           │
+│                GitHub Actions Workflow                      │
+├──────────┬──────────┬──────────┬──────────┬────────────────┤
+│ Gitleaks │  CodeQL  │ Semgrep  │pip-audit │     Trivy      │
+│ Secrets  │  SAST    │  SAST    │   SCA    │  fs + secrets  │
+│ Scanning │          │          │  + SBOM  │     scan       │
+├──────────┴──────────┴──────────┴──────────┴────────────────┤
+│               SARIF → GitHub Security Tab                   │
+│          CycloneDX SBOM → Actions Artifacts                 │
+└─────────────────────────────────────────────────────────────┘
 ---
 
 ## NIST 800-53 Control Coverage
