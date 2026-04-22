@@ -6,24 +6,25 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+# Workflow-level default: least privilege (AC-6)
+# security-events: write is NOT granted here — only the jobs that actually
+# upload SARIF declare it. Jobs that never write to the Security tab
+# (secrets-scan, pip-audit) get contents: read only.
 permissions:
   contents: read
-  security-events: write  # CodeQL uploads SARIF to Security tab; Gitleaks saves artifact only
 
 jobs:
   secrets-scan:
     name: Secrets Scan (Gitleaks)
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      security-events: write   # needed if you add SARIF upload later
+      contents: read   # read-only — no SARIF upload from this job
 
     steps:
       - name: Checkout — full history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # CRITICAL: 0 = full history, not just HEAD
-                                # Without this, secrets in old commits are invisible
+          fetch-depth: 0
 
       - name: Run Gitleaks — current commit
         uses: gitleaks/gitleaks-action@v2
@@ -53,8 +54,7 @@ jobs:
     name: pip-audit — Dependency Vulnerability Scan
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      security-events: write   # needed if you later push SARIF
+      contents: read   # read-only — no SARIF upload from this job
 
     steps:
       - name: Checkout repository
@@ -74,13 +74,11 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # --- SBOM Generation (SA-12) ---
       - name: Generate CycloneDX SBOM
         run: |
           cyclonedx-py environment \
             --output-format json \
             --output-file sbom.cdx.json
-        # cyclonedx-py scans the current pip environment after install
 
       - name: Upload SBOM as pipeline artifact
         uses: actions/upload-artifact@v4
@@ -88,10 +86,8 @@ jobs:
           name: sbom-cyclonedx
           path: sbom.cdx.json
           retention-days: 90
-        # 90-day retention = audit trail; aligns with AU-11 audit record retention
 
-      # --- Vulnerability Gate (SA-15) ---
-      - name: Run pip-audit — fail on HIGH/CRITICAL
+      - name: Run pip-audit — fail on any known vuln
         run: |
           pip-audit \
             --requirement requirements.txt \
@@ -100,7 +96,6 @@ jobs:
             --skip-editable \
             || AUDIT_EXIT=$?
 
-          # Parse and report findings
           python3 - <<'EOF'
           import json, sys
 
@@ -132,16 +127,12 @@ jobs:
               print(f"    Summary : {v['description']}")
               print()
 
-          # Hard fail — any finding blocks the pipeline
-          # Rationale: pip-audit reports confirmed vulns only (no severity field
-          # in OSV schema); every finding here is a known exploitable issue.
-          # For DoD/FedRAMP: no unmitigated known vulns in production supply chain.
           print("❌ Pipeline blocked: known vulnerabilities must be remediated or explicitly waived.")
           sys.exit(1)
           EOF
 
       - name: Upload pip-audit results
-        if: always()   # upload even on failure — preserves evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pip-audit-results
@@ -151,14 +142,13 @@ jobs:
   codeql-sast:
     name: SAST — CodeQL Python Analysis
     runs-on: ubuntu-latest
-    needs: secrets-scan   # Gate: don't run SAST if secrets are present
-
+    needs: secrets-scan
     permissions:
       contents: read
-      security-events: write  # Scoped here too for clarity — CodeQL uploads SARIF
+      security-events: write   # Required: CodeQL uploads SARIF to Security tab
 
     strategy:
-      fail-fast: false        # If you add more languages later, don't cancel all on one failure
+      fail-fast: false
       matrix:
         language: [ python ]
 
@@ -170,13 +160,9 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          # queries: security-extended  # Uncomment Phase 4 when you want deeper coverage
-          #                             # Default = security-and-quality, good for now
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
-        # For Python, autobuild just indexes the source — no compile step needed.
-        # For compiled languages (Java, Go) this actually builds the binary.
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -198,11 +184,12 @@ jobs:
     name: Semgrep SAST
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
-      actions: read
       contents: read
+      security-events: write   # Required: uploads SARIF to Security tab
+      actions: read
     container:
       image: semgrep/semgrep
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -224,3 +211,64 @@ jobs:
         with:
           sarif_file: semgrep.sarif
           category: semgrep
+
+  trivy-scan:
+    name: Trivy — Filesystem Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: [ secrets-scan, pip-audit ]   # Don't scan if secrets exposed or deps are vulnerable
+    permissions:
+      contents: read
+      security-events: write   # Required: uploads SARIF to Security tab
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy — filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH   # Hard-fail threshold — mirrors DoD IA control gates
+          exit-code: 1              # Block pipeline on any CRITICAL or HIGH finding
+          ignore-unfixed: true      # Only flag vulns with available fixes — reduces noise
+          # ignore-unfixed rationale: unfixed vulns have no remediation path;
+          # flagging them blocks the pipeline with no actionable next step.
+          # Auditors accept this as a documented risk acceptance posture.
+
+      - name: Run Trivy — secrets scan (filesystem mode)
+        uses: aquasecurity/trivy-action@master
+        if: always()   # Run even if vuln scan failed — independent gate
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          format: sarif
+          output: trivy-secrets.sarif
+          exit-code: 1
+
+      - name: Upload Trivy vuln SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-filesystem
+
+      - name: Upload Trivy secrets SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-secrets.sarif
+          category: trivy-secrets
+
+      - name: Upload Trivy results as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-results
+          path: |
+            trivy-fs.sarif
+            trivy-secrets.sarif
+          retention-days: 90
