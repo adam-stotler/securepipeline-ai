@@ -317,12 +317,12 @@ jobs:
             cat >> $GITHUB_STEP_SUMMARY << EOF
             ## SecurePipeline.ai — Security Gate Report
 
-            **Run:** \`${{ github.run_number }}\`  
-            **Commit:** \`${{ github.sha }}\`  
-            **Branch:** \`${{ github.ref_name }}\`  
-            **Triggered by:** \`${{ github.actor }}\`  
+            **Run:** \`$GH_RUN_NUMBER\`  
+            **Commit:** \`$GH_SHA\`  
+            **Branch:** \`$GH_REF_NAME\`  
+            **Triggered by:** \`$GH_ACTOR\`  
             **Timestamp:** \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`
-
+            
             ---
 
             ### Gate Results
