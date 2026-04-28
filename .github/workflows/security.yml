@@ -272,3 +272,86 @@ jobs:
             trivy-fs.sarif
             trivy-secrets.sarif
           retention-days: 90
+
+  security-summary:
+      name: Security Gate Summary
+      runs-on: ubuntu-latest
+      # Run after all gates, even if some failed — summary captures overall posture
+      needs: [ secrets-scan, pip-audit, codeql-sast, semgrep, trivy-scan ]
+      if: always()
+      permissions:
+        contents: read
+
+      steps:
+        - name: Write security gate summary
+          env:
+            SECRETS_RESULT:  ${{ needs.secrets-scan.result }}
+            PIPAUDIT_RESULT: ${{ needs.pip-audit.result }}
+            CODEQL_RESULT:   ${{ needs.codeql-sast.result }}
+            SEMGREP_RESULT:  ${{ needs.semgrep.result }}
+            TRIVY_RESULT:    ${{ needs.trivy-scan.result }}
+          run: |
+            # Map result string to emoji + label
+            status() {
+              case "$1" in
+                success)  echo "✅ Pass" ;;
+                failure)  echo "❌ Fail" ;;
+                skipped)  echo "⏭️ Skipped" ;;
+                *)        echo "⚠️ Unknown" ;;
+              esac
+            }
+
+            # Determine overall posture
+            if [[ "$SECRETS_RESULT" == "success" && \
+                  "$PIPAUDIT_RESULT" == "success" && \
+                  "$CODEQL_RESULT" == "success" && \
+                  "$SEMGREP_RESULT" == "success" && \
+                  "$TRIVY_RESULT" == "success" ]]; then
+              OVERALL="✅ All gates passed — merge authorized"
+              POSTURE="PASS"
+            else
+              OVERALL="❌ One or more gates failed — merge blocked"
+              POSTURE="FAIL"
+            fi
+
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+            ## SecurePipeline.ai — Security Gate Report
+
+            **Run:** \`${{ github.run_number }}\`  
+            **Commit:** \`${{ github.sha }}\`  
+            **Branch:** \`${{ github.ref_name }}\`  
+            **Triggered by:** \`${{ github.actor }}\`  
+            **Timestamp:** \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`
+
+            ---
+
+            ### Gate Results
+
+            | Gate | Tool | NIST Control | Result |
+            |------|------|-------------|--------|
+            | Secrets detection | Gitleaks | IA-5, SI-12 | $(status $SECRETS_RESULT) |
+            | Dependency vulnerabilities | pip-audit | SA-12, SI-2 | $(status $PIPAUDIT_RESULT) |
+            | SAST — dataflow analysis | CodeQL | SA-11(1) | $(status $CODEQL_RESULT) |
+            | SAST — pattern matching | Semgrep | SA-11(4) | $(status $SEMGREP_RESULT) |
+            | Filesystem + secrets scan | Trivy | RA-5, SI-3 | $(status $TRIVY_RESULT) |
+
+            ---
+
+            ### Overall Posture
+
+            **$OVERALL**
+
+            > Pipeline enforces NIST 800-53 controls: IA-5, SI-2, SI-3, SI-12, SA-11(1), SA-11(4), SA-12, RA-5, AC-6, CM-3
+            EOF
+
+        - name: Fail job if any gate failed
+          if: |
+            needs.secrets-scan.result != 'success' ||
+            needs.pip-audit.result != 'success' ||
+            needs.codeql-sast.result != 'success' ||
+            needs.semgrep.result != 'success' ||
+            needs.trivy-scan.result != 'success'
+          run: |
+            echo "One or more security gates failed. See summary above."
+            exit 1
+            
