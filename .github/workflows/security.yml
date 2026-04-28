@@ -294,59 +294,56 @@ jobs:
             GH_SHA:          ${{ github.sha }}
             GH_REF_NAME:     ${{ github.ref_name }}
             GH_ACTOR:        ${{ github.actor }}
-          run: |
-            # Map result string to emoji + label
-            status() {
-              case "$1" in
-                success)  echo "✅ Pass" ;;
-                failure)  echo "❌ Fail" ;;
-                skipped)  echo "⏭️ Skipped" ;;
-                *)        echo "⚠️ Unknown" ;;
-              esac
-            }
+        run: |
+          # Map result string to emoji + label
+          status() {
+            case "$1" in
+              success)  echo "✅ Pass" ;;
+              failure)  echo "❌ Fail" ;;
+              skipped)  echo "⏭️ Skipped" ;;
+              *)        echo "⚠️ Unknown" ;;
+            esac
+          }
 
-            # Determine overall posture
-            if [[ "$SECRETS_RESULT" == "success" && \
-                  "$PIPAUDIT_RESULT" == "success" && \
-                  "$CODEQL_RESULT" == "success" && \
-                  "$SEMGREP_RESULT" == "success" && \
-                  "$TRIVY_RESULT" == "success" ]]; then
-              OVERALL="✅ All gates passed — merge authorized"
-              POSTURE="PASS"
-            else
-              OVERALL="❌ One or more gates failed — merge blocked"
-              POSTURE="FAIL"
-            fi
+          if [[ "$SECRETS_RESULT" == "success" && \
+                "$PIPAUDIT_RESULT" == "success" && \
+                "$CODEQL_RESULT" == "success" && \
+                "$SEMGREP_RESULT" == "success" && \
+                "$TRIVY_RESULT" == "success" ]]; then
+            OVERALL="✅ All gates passed — merge authorized"
+          else
+            OVERALL="❌ One or more gates failed — merge blocked"
+          fi
 
-            cat >> $GITHUB_STEP_SUMMARY << EOF
-            ## SecurePipeline.ai — Security Gate Report
-
-            **Run:** `$GH_RUN_NUMBER`
-            **Commit:** `$GH_SHA`
-            **Branch:** `$GH_REF_NAME`
-            **Triggered by:** `$GH_ACTOR`
-            **Timestamp:** `$(date -u +"%Y-%m-%dT%H:%M:%SZ")`
-
-            ---
-
-            ### Gate Results
-
-            | Gate | Tool | NIST Control | Result |
-            |------|------|-------------|--------|
-            | Secrets detection | Gitleaks | IA-5, SI-12 | $(status $SECRETS_RESULT) |
-            | Dependency vulnerabilities | pip-audit | SA-12, SI-2 | $(status $PIPAUDIT_RESULT) |
-            | SAST — dataflow analysis | CodeQL | SA-11(1) | $(status $CODEQL_RESULT) |
-            | SAST — pattern matching | Semgrep | SA-11(4) | $(status $SEMGREP_RESULT) |
-            | Filesystem + secrets scan | Trivy | RA-5, SI-3 | $(status $TRIVY_RESULT) |
-
-            ---
-
-            ### Overall Posture
-
-            **$OVERALL**
-
-            > Pipeline enforces NIST 800-53 controls: IA-5, SI-2, SI-3, SI-12, SA-11(1), SA-11(4), SA-12, RA-5, AC-6, CM-3
-            EOF
+          {
+            echo "## SecurePipeline.ai — Security Gate Report"
+            echo ""
+            echo "**Run:** \`$GH_RUN_NUMBER\`"
+            echo "**Commit:** \`$GH_SHA\`"
+            echo "**Branch:** \`$GH_REF_NAME\`"
+            echo "**Triggered by:** \`$GH_ACTOR\`"
+            echo "**Timestamp:** \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### Gate Results"
+            echo ""
+            echo "| Gate | Tool | NIST Control | Result |"
+            echo "|------|------|-------------|--------|"
+            echo "| Secrets detection | Gitleaks | IA-5, SI-12 | $(status $SECRETS_RESULT) |"
+            echo "| Dependency vulnerabilities | pip-audit | SA-12, SI-2 | $(status $PIPAUDIT_RESULT) |"
+            echo "| SAST — dataflow analysis | CodeQL | SA-11(1) | $(status $CODEQL_RESULT) |"
+            echo "| SAST — pattern matching | Semgrep | SA-11(4) | $(status $SEMGREP_RESULT) |"
+            echo "| Filesystem + secrets scan | Trivy | RA-5, SI-3 | $(status $TRIVY_RESULT) |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### Overall Posture"
+            echo ""
+            echo "**$OVERALL**"
+            echo ""
+            echo "> Pipeline enforces NIST 800-53 controls: IA-5, SI-2, SI-3, SI-12, SA-11(1), SA-11(4), SA-12, RA-5, AC-6, CM-3"
+          } >> $GITHUB_STEP_SUMMARY
 
         - name: Fail job if any gate failed
           if: |
@@ -358,21 +355,3 @@ jobs:
           run: |
             echo "One or more security gates failed. See summary above."
             exit 1
-            
-        - name: Debug env vars
-          env:
-            SECRETS_RESULT:  ${{ needs.secrets-scan.result }}
-            PIPAUDIT_RESULT: ${{ needs.pip-audit.result }}
-            CODEQL_RESULT:   ${{ needs.codeql-sast.result }}
-            SEMGREP_RESULT:  ${{ needs.semgrep.result }}
-            TRIVY_RESULT:    ${{ needs.trivy-scan.result }}
-            GH_RUN_NUMBER:   ${{ github.run_number }}
-            GH_SHA:          ${{ github.sha }}
-            GH_REF_NAME:     ${{ github.ref_name }}
-            GH_ACTOR:        ${{ github.actor }}
-          run: |
-            echo "SECRETS_RESULT=$SECRETS_RESULT"
-            echo "GH_RUN_NUMBER=$GH_RUN_NUMBER"
-            echo "GH_SHA=$GH_SHA"
-            echo "GH_REF_NAME=$GH_REF_NAME"
-            echo "GH_ACTOR=$GH_ACTOR"
