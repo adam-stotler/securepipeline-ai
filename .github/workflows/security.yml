@@ -344,13 +344,13 @@ jobs:
             echo "> Pipeline enforces NIST 800-53 controls: IA-5, SI-2, SI-3, SI-12, SA-11(1), SA-11(4), SA-12, RA-5, AC-6, CM-3"
           } >> $GITHUB_STEP_SUMMARY
 
-        - name: Fail job if any gate failed
-          if: |
-            needs.secrets-scan.result != 'success' ||
-            needs.pip-audit.result != 'success' ||
-            needs.codeql-sast.result != 'success' ||
-            needs.semgrep.result != 'success' ||
-            needs.trivy-scan.result != 'success'
-          run: |
-            echo "One or more security gates failed. See summary above."
-            exit 1
+      - name: Fail job if any gate failed
+        if: |
+          needs.secrets-scan.result != 'success' ||
+          needs.pip-audit.result != 'success' ||
+          needs.codeql-sast.result != 'success' ||
+          needs.semgrep.result != 'success' ||
+          needs.trivy-scan.result != 'success'
+        run: |
+          echo "One or more security gates failed. See summary above."
+          exit 1
